@@ -1,0 +1,13 @@
+{
+  "name": "crime-report-backend",
+  "version": "1.0.0",
+  "description": "Pure Node.js backend for the Crime Report App using Oracle Database",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "oracledb": "^6.8.0"
+  }
+}
