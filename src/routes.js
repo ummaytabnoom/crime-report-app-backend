@@ -46,6 +46,14 @@ async function handle(req, res) {
       e.statusCode = 409; throw e;
     }
 
+    const role = String(body.role || "public").toLowerCase();
+    const allowedRoles = ["public", "admin", "police"];
+
+    if (!allowedRoles.includes(role)) {
+      const e = new Error("Invalid role. Allowed roles: public, admin, police");
+      e.statusCode = 400; throw e;
+    }
+
     const result = await execute(
       `INSERT INTO REGISTERED_USERS
        (FULL_NAME, USER_NAME, EMAIL, DOB, MOBILE, ROLE, POLICE_ID, PASSWORD, PROFILE_PICTURE)
@@ -55,7 +63,7 @@ async function handle(req, res) {
         fullName, userName, email,
         dob: normalize(body.dob) ? new Date(body.dob) : null,
         mobile: normalize(body.mobile),
-        role: String(body.role || "USER").toUpperCase(),
+        role,
         policeId: normalize(body.policeId),
         password: hashPassword(password),
         id: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER }
@@ -194,7 +202,7 @@ async function handle(req, res) {
 
   if (key === "GET /api/crimes") {
     const user = requireAuth(req);
-    requireRole(user, "ADMIN", "POLICE");
+    requireRole(user, "admin", "police");
 
     let sql = `
       SELECT CRIME_ID, ID, USER_NAME, FULL_NAME, ZILLA, UPAZILLA,
@@ -204,7 +212,7 @@ async function handle(req, res) {
       FROM REPORTED_CRIMES`;
     const binds = {};
 
-    if (String(user.role).toUpperCase() === "POLICE") {
+    if (String(user.role).toLowerCase() === "police") {
       sql += ` WHERE POLICE_ID=:policeId`;
       binds.policeId = user.policeId;
     }
@@ -233,9 +241,9 @@ async function handle(req, res) {
     }
 
     const crime = result.rows[0];
-    const role = String(user.role).toUpperCase();
-    const allowed = role === "ADMIN" ||
-      (role === "POLICE" && crime.POLICE_ID === user.policeId) ||
+    const role = String(user.role).toLowerCase();
+    const allowed = role === "admin" ||
+      (role === "police" && crime.POLICE_ID === user.policeId) ||
       crime.ID === user.id;
 
     if (!allowed) {
@@ -250,7 +258,7 @@ async function handle(req, res) {
 
   if (key === "GET /api/police") {
     const user = requireAuth(req);
-    requireRole(user, "ADMIN");
+    requireRole(user, "admin");
 
     const result = await execute(
       `SELECT POLICE_ID, NAME, FATHERS_NAME, MOTHERS_NAME,
@@ -265,7 +273,7 @@ async function handle(req, res) {
   const assignMatch = pathname.match(/^\/api\/admin\/crimes\/(\d+)\/assign$/);
   if (assignMatch && req.method === "PATCH") {
     const user = requireAuth(req);
-    requireRole(user, "ADMIN");
+    requireRole(user, "admin");
 
     const body = await readBody(req);
     const policeId = String(body.policeId || "").trim();
@@ -295,7 +303,7 @@ async function handle(req, res) {
   const acceptMatch = pathname.match(/^\/api\/admin\/crimes\/(\d+)\/accept$/);
   if (acceptMatch && req.method === "PATCH") {
     const user = requireAuth(req);
-    requireRole(user, "ADMIN");
+    requireRole(user, "admin");
 
     await execute(
       `UPDATE REPORTED_CRIMES
@@ -311,7 +319,7 @@ async function handle(req, res) {
   const statusMatch = pathname.match(/^\/api\/crimes\/(\d+)\/status$/);
   if (statusMatch && req.method === "PATCH") {
     const user = requireAuth(req);
-    requireRole(user, "POLICE", "ADMIN");
+    requireRole(user, "police", "admin");
 
     const crimeId = Number(statusMatch[1]);
     const body = await readBody(req);
@@ -321,7 +329,7 @@ async function handle(req, res) {
       const e = new Error("status is required"); e.statusCode = 400; throw e;
     }
 
-    if (String(user.role).toUpperCase() === "POLICE") {
+    if (String(user.role).toLowerCase() === "police") {
       const owned = await execute(
         `SELECT CRIME_ID FROM REPORTED_CRIMES
          WHERE CRIME_ID=:crimeId AND POLICE_ID=:policeId`,
@@ -346,7 +354,7 @@ async function handle(req, res) {
   const userMatch = pathname.match(/^\/api\/admin\/users\/(\d+)$/);
   if (userMatch && req.method === "DELETE") {
     const user = requireAuth(req);
-    requireRole(user, "ADMIN");
+    requireRole(user, "admin");
 
     const targetId = Number(userMatch[1]);
     if (targetId === user.id) {
