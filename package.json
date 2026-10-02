@@ -1,15 +1,20 @@
 {
   "name": "crime-report-backend",
   "version": "1.0.0",
-  "description": "Pure Node.js backend for the Crime Report App using Oracle Database",
+  "description": "Minimal Crime Report API using Express and OracleDB",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "nodemon src/server.js"
   },
   "dependencies": {
-    "dotenv": "^18.0.4",
-    "nodemon": "^3.1.14",
-    "oracledb": "^6.10.0"
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "oracledb": "^6.8.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }

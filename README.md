@@ -1,43 +1,23 @@
-# Crime Report Backend — Pure Node.js
+# Crime Report Backend
 
-Backend for the Crime Report App using:
+Minimal Node.js + Express + OracleDB backend.
 
-- Node.js built-in `http` module
-- Oracle Database through the official `oracledb` driver
-- Native `crypto` for SHA-256 password hashing and HMAC JWT signing
-- Native `fs` for evidence-file handling
-- No Express
-- No Fastify
-- No NestJS
-- No web framework
-
-## Database
-
-This backend targets the existing tables:
-
-- `POLICE_INFO`
-- `REGISTERED_USERS`
-- `REPORTED_CRIMES`
-
-It does not require a schema rewrite.
-
-## Setup
-
-1. Install Node.js 18+.
-2. Install Oracle client prerequisites required by the `oracledb` package.
-3. Copy `.env.example` to `.env`.
-4. Put your Oracle credentials in `.env`.
-5. Install dependencies:
+## 1. Install
 
 ```bash
 npm install
 ```
 
-6. Start:
+Copy `.env.example` to `.env` and keep your Oracle settings:
 
-```bash
-npm start
+```env
+DB_USER=system
+DB_PASSWORD=a12345
+DB_CONNECT_STRING=localhost:1521/xe
+PORT=3000
 ```
+
+## 2. Run
 
 Development:
 
@@ -45,74 +25,197 @@ Development:
 npm run dev
 ```
 
-## API
+Normal:
 
-### Public
+```bash
+npm start
+```
 
-`GET /api/health`
+## 3. Important design
+
+No JWT and no token/session system is used.
+
+After login, the client receives the user object. For protected requests, send:
+
+```http
+x-user-id: 123
+```
+
+The server looks up that user in Oracle and checks the user's current role.
+
+This is intentionally simple, but it is NOT a secure authentication system for production because a client can change `x-user-id`.
+
+Passwords are stored as bcrypt hashes, not plain text.
+
+## 4. Crime workflow
+
+`ACCEPTED` is moderation/public visibility:
+
+- `Not Accepted`
+- `Accepted`
+
+`STATUS` is police investigation status:
+
+- `Pending`
+- `Accepted`
+- `Under Investigation`
+
+Therefore:
+
+- A new report starts with `ACCEPTED = 'Not Accepted'`.
+- Admin accepts a report by changing `ACCEPTED` to `Accepted`.
+- `/api/crimes/global` returns only `ACCEPTED = 'Accepted'`.
+- Police can change `STATUS`.
+- Admin acceptance and police investigation status are separate.
+
+## 5. API
+
+### Auth
 
 `POST /api/auth/register`
 
-Example:
+User example:
 
 ```json
 {
-  "fullName": "Test User",
-  "userName": "testuser",
-  "email": "test@example.com",
-  "password": "secret123",
+  "full_name": "John Doe",
+  "user_name": "john",
+  "email": "john@example.com",
   "dob": "2000-01-01",
   "mobile": "01700000000",
-  "role": "USER"
+  "role": "USER",
+  "password": "123456"
 }
 ```
+
+Police example:
+
+```json
+{
+  "full_name": "Police Officer",
+  "user_name": "police01",
+  "email": "police@example.com",
+  "role": "POLICE",
+  "police_id": "P001",
+  "password": "123456"
+}
+```
+
+For `POLICE`, `police_id` must already exist in `POLICE_INFO`.
 
 `POST /api/auth/login`
 
 ```json
 {
-  "userName": "testuser",
-  "password": "secret123"
+  "user_name": "john",
+  "password": "123456"
 }
 ```
 
-The login response returns a Bearer token.
+`user_name` may also be an email.
 
-### Authenticated user
+### Current user
 
-`GET /api/me`
+`GET /api/users/me`
 
-`POST /api/crimes`
+Header:
 
-`GET /api/crimes/my`
-
-`GET /api/crimes/:crimeId`
-
-### Admin
-
-`GET /api/crimes`
-
-`GET /api/police`
-
-`PATCH /api/admin/crimes/:crimeId/accept`
-
-```json
-{}
+```http
+x-user-id: 1
 ```
 
-`PATCH /api/admin/crimes/:crimeId/assign`
+### Admin users
+
+`GET /api/users`
+
+Header:
+
+```http
+x-user-id: ADMIN_USER_ID
+```
+
+`PATCH /api/users/:id/role`
 
 ```json
 {
-  "policeId": "P001"
+  "role": "POLICE"
 }
 ```
 
-`DELETE /api/admin/users/:id`
+`DELETE /api/users/:id`
 
-### Police/Admin
+### Crimes
 
-`PATCH /api/crimes/:crimeId/status`
+`POST /api/crimes`
+
+Header:
+
+```http
+x-user-id: USER_ID
+```
+
+Body:
+
+```json
+{
+  "zilla": "Dhaka",
+  "upazilla": "Dhanmondi",
+  "police_station": "Dhanmondi",
+  "area": "Road 5",
+  "road_name": "Main Road",
+  "road_no": "5",
+  "date_of_incident": "2026-09-29",
+  "category": "Theft",
+  "description": "Description",
+  "hide_identity": "NO",
+  "media_type": "image/jpeg",
+  "media_file": "BASE64_DATA"
+}
+```
+
+`media_file` and `profile_picture` can be a normal base64 string or a data URL.
+
+`GET /api/crimes/mine`
+
+`GET /api/crimes/:id`
+
+`PATCH /api/crimes/:id`
+
+`DELETE /api/crimes/:id`
+
+`GET /api/crimes/global`
+
+Returns only accepted/public reports.
+
+### Admin pending reports
+
+`GET /api/crimes/pending`
+
+Header:
+
+```http
+x-user-id: ADMIN_USER_ID
+```
+
+`PATCH /api/crimes/:id/accept`
+
+Header:
+
+```http
+x-user-id: ADMIN_USER_ID
+```
+
+### Police
+
+`GET /api/crimes/pending`
+
+Header:
+
+```http
+x-user-id: POLICE_USER_ID
+```
+
+`PATCH /api/crimes/:id/status`
 
 ```json
 {
@@ -120,31 +223,36 @@ The login response returns a Bearer token.
 }
 ```
 
-## Authentication
+Allowed values:
 
-Send:
+- `Accepted`
+- `Pending`
+- `Under Investigation`
+
+## 6. Folder structure
 
 ```text
-Authorization: Bearer YOUR_TOKEN
+crime-report-backend/
+├── src/
+│   ├── controllers/
+│   │   ├── authController.js
+│   │   ├── crimeController.js
+│   │   └── userController.js
+│   ├── routes/
+│   │   ├── authRoutes.js
+│   │   ├── crimeRoutes.js
+│   │   └── userRoutes.js
+│   ├── services/
+│   │   ├── crimeService.js
+│   │   └── userService.js
+│   ├── app.js
+│   ├── config.js
+│   ├── db.js
+│   ├── middleware.js
+│   ├── server.js
+│   └── utils.js
+├── .env.example
+├── .gitignore
+├── package.json
+└── README.md
 ```
-
-## Important security note
-
-The original JSP project contains database credentials directly in JSP files. This backend deliberately moves credentials to `.env`.
-
-For production, consider replacing SHA-256 password storage with a slow password-hashing algorithm such as Argon2 or bcrypt. This initial version keeps SHA-256 so existing passwords from the original application can remain compatible while we migrate the authentication system.
-
-## Next modules
-
-The backend can be extended with:
-
-- profile picture upload
-- police profile management
-- admin user management
-- crime deletion
-- report rejection
-- case history/audit table
-- refresh tokens
-- validation layer
-- rate limiting
-- static frontend serving

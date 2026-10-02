@@ -1,8 +1,7 @@
 const oracledb = require("oracledb");
 const config = require("./config");
 
-oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
-oracledb.autoCommit = false;
+oracledb.fetchAsString = [oracledb.CLOB];
 
 let pool;
 
@@ -11,46 +10,24 @@ async function initDb() {
     user: config.db.user,
     password: config.db.password,
     connectString: config.db.connectString,
-    poolMin: config.db.poolMin,
-    poolMax: config.db.poolMax,
-    poolIncrement: config.db.poolIncrement
+    poolMin: 1,
+    poolMax: 5,
+    poolIncrement: 1
   });
+
+  console.log("OracleDB connected");
+}
+
+async function getConnection() {
+  if (!pool) throw new Error("Database pool is not initialized");
+  return pool.getConnection();
 }
 
 async function closeDb() {
-  if (pool) await pool.close(10);
-}
-
-async function execute(sql, binds = {}, options = {}) {
-  const connection = await pool.getConnection();
-  try {
-    const result = await connection.execute(sql, binds, {
-      outFormat: oracledb.OUT_FORMAT_OBJECT,
-      autoCommit: false,
-      ...options
-    });
-    if (options.autoCommit !== false) await connection.commit();
-    return result;
-  } catch (error) {
-    try { await connection.rollback(); } catch {}
-    throw error;
-  } finally {
-    await connection.close();
+  if (pool) {
+    await pool.close(10);
+    pool = null;
   }
 }
 
-async function transaction(work) {
-  const connection = await pool.getConnection();
-  try {
-    const result = await work(connection);
-    await connection.commit();
-    return result;
-  } catch (error) {
-    try { await connection.rollback(); } catch {}
-    throw error;
-  } finally {
-    await connection.close();
-  }
-}
-
-module.exports = { oracledb, initDb, closeDb, execute, transaction };
+module.exports = { initDb, getConnection, closeDb };
